@@ -1,0 +1,45 @@
+steps:
+- task: DownloadBuildArtifacts@0
+  inputs:
+    buildType: 'current'
+    downloadType: 'single'
+    artifactName: 'app-artifact'
+    downloadPath: '$(System.ArtifactsDirectory)'
+            
+- task: CmdLine@2
+  inputs:
+    script: |
+      git clone https://github.com/shir707/ansibleProject.git
+  displayName: "git clone to ansible project"
+          
+- task: CmdLine@2
+  inputs:
+    script: |
+      cd $(system.artifactsdirectory)
+      cat <<EOF >.env
+      # Host configuration
+                        
+                PORT=8080
+                HOST=0.0.0.0
+                          
+                          
+                # Postgres
+                PGHOST=$(db_host)
+                PGUSERNAME=$(db_user_name)
+                PGDATABASE=$(db_name)
+                PGPASSWORD=$(db_pass)
+                PGPORT=$(db_port)
+                          
+                # Host Configurations
+                HOST_URL=http://$(public_ip):8080
+                COOKIE_ENCRYPT_PWD=superAwesomePasswordStringThatIsAtLeast32CharactersLong!
+                NODE_ENV=development
+                                     
+                # Okta configuration
+                           
+                OKTA_ORG_URL=$(okta_url)
+                OKTA_CLIENT_ID= $(okta_id)
+                OKTA_CLIENT_SECRET= $(okta_secret)
+                
+      EOF
+  displayName: "creating env file with varaibles"

@@ -1,0 +1,99 @@
+trigger:
+- master
+
+name: $(Year:yy).$(Month).$(DayOfMonth)-$(SourceBranchName)
+
+stages:
+- stage: 'Build_Stage' 
+  displayName: 'Build' #Name displayed when viewing in Azure DevOps
+  jobs:
+  - job: 'Build_Job' 
+    displayName: 'Application Build'
+    pool:
+      name: "myPoll1"
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '14.x'
+      displayName: 'Install Node.js 14'     
+    - task: Npm@1
+      inputs:
+        command: 'ci'
+        workingDir: '$(build.sourcesdirectory)'
+      displayName: "install dependencies for the app"
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(build.sourcesdirectory)'
+        includeRootFolder: true
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/bootcamp-app/bootcamp.zip'
+        replaceExistingArchive: true
+    
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)/bootcamp-app/bootcamp.zip' 
+        artifactName: 'app-artifact'
+      displayName: 'Publish Artifact'
+    
+    - task: UniversalPackages@0
+      inputs:
+        command: 'publish'
+        publishDirectory: '$(Build.ArtifactStagingDirectory)/bootcamp-app'
+        feedsToUsePublish: 'internal'
+        vstsFeedPublish: '376f7481-d923-4452-bfd6-a32bc57614d8/f1db5c63-c48c-4e00-bee0-055d5a11a598'
+        vstsFeedPackagePublish: 'app-artifact'
+        versionOption: 'patch'
+        packagePublishDescription: 'publish the zip into azure artifact'
+        
+- stage: 'Staging' 
+  variables:
+  - group: stageGroup
+  displayName: 'Staging'
+  dependsOn: ['Build_Stage'] 
+  jobs:
+  - deployment: Deploy_Staging 
+    displayName: Staging Deployment 
+    pool:
+      name: "myPoll1" 
+    environment: Staging
+    strategy:
+      runOnce:
+        deploy:
+          steps:          
+          - template: templates/my-steps-template.yml
+          
+          - task: Ansible@0
+            inputs:
+              ansibleInterface: 'agentMachine'
+              playbookPathOnAgentMachine: 'ansibleProject/main.yml'
+              inventoriesAgentMachine: 'file'
+              inventoryFileOnAgentMachine: 'ansibleProject/inventories/stage'
+              args: '--extra-vars server_env_group="stageServers" --verbose'
+              failOnStdErr: false
+
+- stage: 'Production'
+  variables:
+  - group: prodGroup 
+  displayName: 'Production'
+  dependsOn: ['Build_Stage', 'Staging']
+  jobs:
+  - deployment: Deploy_Production 
+    displayName: Production Deployment 
+    pool:
+      name: "prodPoll"
+    environment: Production
+    strategy:
+      runOnce:
+       deploy:
+          steps:
+          - template: templates/my-steps-template.yml
+          - task: Ansible@0
+            inputs:
+              ansibleInterface: 'agentMachine'
+              playbookPathOnAgentMachine: 'ansibleProject/main.yml'
+              inventoriesAgentMachine: 'file'
+              inventoryFileOnAgentMachine: 'ansibleProject/inventories/prod'
+              args: '--extra-vars server_env_group="prodServers" --verbose'
+              failOnStdErr: false
+
+          
